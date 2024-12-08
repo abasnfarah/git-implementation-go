@@ -1,11 +1,11 @@
 build:
-	go build -o bin/mygit cmd/mygit/main.go
+	go build -o ~/.local/bin/mygit cmd/mygit/main.go
 
 run:
 	go run cmd/mygit/main.go
 
 clean:
-	rm -rf bin
+	rm -rf ~/.local/bin/mygit
 
 test:
 	go test -v ./...
