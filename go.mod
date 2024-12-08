@@ -9,3 +9,5 @@
 module github.com/codecrafters-io/git-starter-go
 
 go 1.19
+
+require github.com/urfave/cli/v3 v3.0.0-beta1 // indirect

@@ -1,36 +1,26 @@
 package main
 
 import (
-	"fmt"
+	"context"
+	"log"
 	"os"
+
+	"github.com/codecrafters-io/git-starter-go/cmd/mygit/git"
+	"github.com/urfave/cli/v3"
 )
 
 // Usage: your_git.sh <command> <arg1> <arg2> ...
 func main() {
-	fmt.Println("Logs from your program will appear here!")
-
-	if len(os.Args) < 2 {
-		fmt.Fprintf(os.Stderr, "usage: mygit <command> [<args>...]\n")
-		os.Exit(1)
+	cmd := &cli.Command{
+		Name:  "mygit ",
+		Usage: "[-v | --version] [-h | --help] [-C <path>] [-c <name>=<value>]\n[--exec-path[=<path>]] [--html-path] [--man-path] [--info-path]\n[-p | --paginate | -P | --no-pager] [--no-replace-objects] [--bare]\n[--git-dir=<path>] [--work-tree=<path>] [--namespace=<name>]\n[--config-env=<name>=<envvar>] <command> [<args>]",
+		Action: func(ctx context.Context, cmd *cli.Command) error {
+			git.Action(ctx, cmd)
+			return nil
+		},
 	}
 
-	switch command := os.Args[1]; command {
-	case "init":
-		for _, dir := range []string{".git", ".git/objects", ".git/refs"} {
-			if err := os.MkdirAll(dir, 0755); err != nil {
-				fmt.Fprintf(os.Stderr, "Error creating directory: %s\n", err)
-			}
-		}
-
-		headFileContents := []byte("ref: refs/heads/master\n")
-		if err := os.WriteFile(".git/HEAD", headFileContents, 0644); err != nil {
-			fmt.Fprintf(os.Stderr, "Error writing file: %s\n", err)
-		}
-
-		fmt.Println("Initialized git directory")
-
-	default:
-		fmt.Fprintf(os.Stderr, "Unknown command %s\n", command)
-		os.Exit(1)
+	if err := cmd.Run(context.Background(), os.Args); err != nil {
+		log.Fatal(err)
 	}
 }
