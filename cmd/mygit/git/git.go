@@ -16,6 +16,13 @@ func NewGit() *Git {
 	return &Git{}
 }
 
+func (g *Git) PrintUsage() {
+	fmt.Println("Usage: mygit <command> [<args>]")
+	fmt.Println("\nAvailable commands:")
+	fmt.Println("  init                   Initialize a new git repository")
+	fmt.Println("  cat-file -p <blob>      Pretty-print the contents of a git object")
+}
+
 func (g *Git) createDotFiles() error {
 	for _, dir := range []string{".git", ".git/objects", ".git/refs"} {
 		if err := os.MkdirAll(dir, 0755); err != nil {
