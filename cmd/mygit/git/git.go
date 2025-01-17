@@ -1,27 +1,16 @@
 package git
 
 import (
-	// "bytes"
 	"bytes"
 	"compress/zlib"
-	"context"
-
-	// "encoding/base64"
+	"flag"
 	"fmt"
 	"io"
 	"os"
-
-	"github.com/urfave/cli/v3"
+	"path/filepath"
 )
 
-//TODO: create object types
-// type blob struct {
-//
-// }
-
-type Git struct {
-	fileType string
-}
+type Git struct{}
 
 func NewGit() *Git {
 	return &Git{}
@@ -30,8 +19,7 @@ func NewGit() *Git {
 func (g *Git) createDotFiles() error {
 	for _, dir := range []string{".git", ".git/objects", ".git/refs"} {
 		if err := os.MkdirAll(dir, 0755); err != nil {
-			err := fmt.Errorf("Unable to create directory: %s\n", err)
-			return err
+			return fmt.Errorf("Unable to create directory: %s", err)
 		}
 	}
 	return nil
@@ -40,79 +28,75 @@ func (g *Git) createDotFiles() error {
 func (g *Git) initHEADFile() error {
 	headFileContents := []byte("ref: refs/heads/master\n")
 	if err := os.WriteFile(".git/HEAD", headFileContents, 0644); err != nil {
-		err := fmt.Errorf("Unable to write file: %s\n", err)
-		return err
+		return fmt.Errorf("Unable to write file: %s", err)
 	}
 	return nil
 }
 
-func (g *Git) Init() *cli.Command {
-
-	return &cli.Command{
-		Name:  "init",
-		Usage: "Initilizes a git repository",
-		Action: func(ctx context.Context, cmd *cli.Command) error {
-
-			if err := g.createDotFiles(); err != nil {
-				return err
-			}
-
-			if err := g.initHEADFile(); err != nil {
-				return err
-			}
-			return nil
-		},
+func (g *Git) Init() error {
+	if err := g.createDotFiles(); err != nil {
+		return err
 	}
+	return g.initHEADFile()
 }
 
-func (g *Git) OpenFile() *cli.Command {
-	return &cli.Command{
-		Name:  "open-file",
-		Usage: "Opens file",
-		Action: func(ctx context.Context, cmd *cli.Command) error {
-			args := cmd.Args()
-			filePath := args.Get(0)
-			fileData, _ := os.ReadFile(filePath)
-			fmt.Println(string(fileData))
-			return nil
-		},
+func (g *Git) CatFile(sha string) error {
+	path := filepath.Join(".git", "objects", sha[:2], sha[2:])
+	file, err := os.Open(path)
+	if err != nil {
+		return err
 	}
+	defer file.Close()
+
+	r, err := zlib.NewReader(file)
+	if err != nil {
+		return err
+	}
+	defer r.Close()
+
+	contentBuffer, err := io.ReadAll(r)
+	if err != nil {
+		return err
+	}
+
+	parts := bytes.Split(contentBuffer, []byte("\x00"))
+	newContent := string(parts[1])
+	fmt.Print(newContent)
+
+	return nil
 }
 
-func (g *Git) CatFile() *cli.Command {
-	return &cli.Command{
-		Name:  "cat-file",
-		Usage: "Provide content or type and size information for repository objects",
-		Action: func(ctx context.Context, cmd *cli.Command) error {
-			args := cmd.Args()
-			if args.Len() < 1 || args.Len() > 1 {
-				err := fmt.Errorf("Wrong number of arguments to input. Requires 1 argument to cat-file command")
-				return err
-			}
+func (g *Git) Run() error {
+	initCmd := flag.NewFlagSet("init", flag.ExitOnError)
+	catFileCmd := flag.NewFlagSet("cat-file", flag.ExitOnError)
+	catFilePrettyPrint := catFileCmd.String("p", "", "Pretty print blob object content")
 
-			sha := args.Get(0)
-			path := fmt.Sprintf(".git/objects/%v/%v", sha[0:2], sha[2:])
-			file, _ := os.Open(path)
-
-			r, err := zlib.NewReader(io.Reader(file))
-			if err != nil {
-				return err
-			}
-
-			contentBuffer, err := io.ReadAll(r)
-			if err != nil {
-				return err
-			}
-
-			parts := bytes.Split(contentBuffer, []byte("\x00"))
-			newContent := string(parts[1])
-			fmt.Println(newContent)
-
-			io.Copy(os.Stdout, r)
-			r.Close()
-			file.Close()
-
-			return nil
-		},
+	if len(os.Args) < 2 {
+		return fmt.Errorf("Expected 'init' or 'cat-file' subcommands")
 	}
+
+	switch os.Args[1] {
+	case "init":
+		initCmd.Parse(os.Args[2:])
+		if err := g.Init(); err != nil {
+			return err
+		}
+		fmt.Println("Initialized git repository")
+
+	case "cat-file":
+		if len(os.Args) < 3 {
+			return fmt.Errorf("Expected -p flag with blob object")
+		}
+		catFileCmd.Parse(os.Args[2:])
+		sha := *catFilePrettyPrint
+		if err := g.CatFile(sha); err != nil {
+			fmt.Println(catFilePrettyPrint)
+			return err
+		}
+
+	default:
+		return fmt.Errorf("Expected 'init' or 'cat-file' subcommands")
+	}
+
+	return nil
 }
