@@ -107,10 +107,19 @@ func (g *Git) HashObject(file string) error {
 	data = append(data, content...)
 	var b bytes.Buffer
 	w := zlib.NewWriter(&b)
-	w.Write(data)
+	blobObject, err := os.OpenFile(path, os.O_RDONLY|os.O_CREATE, 0666)
+	defer blobObject.Close()
+
+	if _, err = w.Write(data); err != nil {
+		return fmt.Errorf("Unable to write to zlib writer: %s", err)
+	}
 	defer w.Close()
 
-	os.WriteFile(path, b.Bytes(), 446)
+	_, err = io.Copy(blobObject, &b)
+	if err != nil {
+		return fmt.Errorf("Unable to write file: %s", err)
+	}
+	fmt.Println(b.Bytes())
 
 	return nil
 }
