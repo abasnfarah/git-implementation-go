@@ -3,6 +3,8 @@ package git
 import (
 	"bytes"
 	"compress/zlib"
+	"crypto/sha1"
+	"encoding/hex"
 	"flag"
 	"fmt"
 	"io"
@@ -19,8 +21,9 @@ func NewGit() *Git {
 func (g *Git) PrintUsage() {
 	fmt.Println("Usage: mygit <command> [<args>]")
 	fmt.Println("\nAvailable commands:")
-	fmt.Println("  init                   Initialize a new git repository")
-	fmt.Println("  cat-file -p <blob>      Pretty-print the contents of a git object")
+	fmt.Println("  init                      Initialize a new git repository")
+	fmt.Println("  cat-file  -p <blob>       Pretty-print the contents of a git object")
+	fmt.Println("  hash-object <file> [-w]   Create a git object from a file. Also writes to .git/objects if -w is provided")
 }
 
 func (g *Git) createDotFiles() error {
@@ -73,10 +76,53 @@ func (g *Git) CatFile(sha string) error {
 	return nil
 }
 
+func (g *Git) HashObject(file string) error {
+	content, err := os.ReadFile(file)
+	if err != nil {
+		return fmt.Errorf("Unable to read file: %s", file)
+	}
+
+	stats, err := os.Stat(file)
+	if err != nil {
+		return fmt.Errorf("Unable to fetch stats on file: %s. %s", file, err)
+	}
+
+	sha := sha1.New()
+	header := fmt.Sprintf("blob %d\x00", stats.Size())
+	sha.Write([]byte(header))
+	sha.Write(content)
+	hashBytes := sha.Sum(nil)
+	hash := hex.EncodeToString(hashBytes)
+
+	fmt.Println(hash)
+
+	path := filepath.Join(".git", "objects", hash[:2], hash[2:])
+	parent := filepath.Join(".git", "objects", hash[:2])
+	err = os.MkdirAll(parent, os.ModeDir|502)
+	if err != nil {
+		return fmt.Errorf("Error creating directory: %s. %s", path, err)
+	}
+
+	data := []byte(header)
+	data = append(data, content...)
+	var b bytes.Buffer
+	w := zlib.NewWriter(&b)
+	w.Write(data)
+	defer w.Close()
+
+	os.WriteFile(path, b.Bytes(), 446)
+
+	return nil
+}
+
 func (g *Git) Run() error {
 	initCmd := flag.NewFlagSet("init", flag.ExitOnError)
+
 	catFileCmd := flag.NewFlagSet("cat-file", flag.ExitOnError)
 	catFilePrettyPrint := catFileCmd.String("p", "", "Pretty print blob object content")
+
+	hashObjectCmd := flag.NewFlagSet("hash-object", flag.ExitOnError)
+	hashObjectWriteObject := hashObjectCmd.String("w", "", "Write blob to .git/objects")
 
 	if len(os.Args) < 2 {
 		return fmt.Errorf("Expected 'init' or 'cat-file' subcommands")
@@ -97,12 +143,26 @@ func (g *Git) Run() error {
 		catFileCmd.Parse(os.Args[2:])
 		sha := *catFilePrettyPrint
 		if err := g.CatFile(sha); err != nil {
-			fmt.Println(catFilePrettyPrint)
+			return err
+		}
+
+	case "hash-object":
+
+		if len(os.Args) < 3 {
+			return fmt.Errorf("Expected -w flag with file")
+		}
+		err := hashObjectCmd.Parse(os.Args[2:])
+		if err != nil {
+			return fmt.Errorf("hash-object command misuse")
+		}
+		file := *hashObjectWriteObject
+
+		if err := g.HashObject(file); err != nil {
 			return err
 		}
 
 	default:
-		return fmt.Errorf("Expected 'init' or 'cat-file' subcommands")
+		return fmt.Errorf("Expected subcommands")
 	}
 
 	return nil
