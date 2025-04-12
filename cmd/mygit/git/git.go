@@ -87,13 +87,15 @@ func (g *Git) HashObject(file string) error {
 		return fmt.Errorf("Unable to fetch stats on file: %s. %s", file, err)
 	}
 
-	sha := sha1.New()
+
 	header := fmt.Sprintf("blob %d\x00", stats.Size())
-	sha.Write([]byte(header))
-	sha.Write(content)
+	data := []byte(header)
+	data = append(data, content...)
+
+	sha := sha1.New()
+	sha.Write(data)
 	hashBytes := sha.Sum(nil)
 	hash := hex.EncodeToString(hashBytes)
-
 	fmt.Println(hash)
 
 	path := filepath.Join(".git", "objects", hash[:2], hash[2:])
@@ -103,23 +105,13 @@ func (g *Git) HashObject(file string) error {
 		return fmt.Errorf("Error creating directory: %s. %s", path, err)
 	}
 
-	data := []byte(header)
-	data = append(data, content...)
-	var b bytes.Buffer
-	w := zlib.NewWriter(&b)
-	blobObject, err := os.OpenFile(path, os.O_RDONLY|os.O_CREATE, 0666)
+	blobObject, err := os.Create(path)
 	defer blobObject.Close()
-
+	w := zlib.NewWriter(blobObject)
 	if _, err = w.Write(data); err != nil {
 		return fmt.Errorf("Unable to write to zlib writer: %s", err)
 	}
 	defer w.Close()
-
-	_, err = io.Copy(blobObject, &b)
-	if err != nil {
-		return fmt.Errorf("Unable to write file: %s", err)
-	}
-	fmt.Println(b.Bytes())
 
 	return nil
 }
